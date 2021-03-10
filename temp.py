@@ -1,7 +1,8 @@
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StringType
-import datetime
+# from pyspark.sql import functions as F
+# from pyspark.sql.types import StructType, StringType
+# from pyspark.sql.functions import lit
+# import datetime
 
 # this row only for IDE
 spark = SparkSession.builder.appName("mmingalov_spark").getOrCreate()
@@ -11,7 +12,7 @@ export SPARK_KAFKA_VERSION=0.10
 /spark2.4/bin/pyspark --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.5 --driver-memory 512m --num-executors 1 --executor-memory 512m --master local[1]
 
 from pyspark.sql.functions import udf
-from pyspark.sql.functions import lit
+
 
 #loading all CSV files in spark dataframes
 drill_df = spark.read.format("csv")\
@@ -23,42 +24,91 @@ lab_df = spark.read.format("csv")\
             .schema("sample_id STRING, result FLOAT")\
             .load("final_project/LAB/*.csv")
 
-#JOIN AND SORTING
+drill_df.printSchema()
 
-join_df = drill_df\
-            .join(lab_df,lab_df.sample_id == drill_df.sample_id,"left")
+drill_df.show()
+
+#JOIN AND SORTING
+join_df = drill_df.alias("a")\
+            .join(lab_df.alias("b"),lab_df.sample_id == drill_df.sample_id,"inner")\
+            .select("a.*","b.result")
 
 sorted_df = join_df\
             .sort("hole_id","depth_from")
 
+sorted_df.printSchema()
 sorted_df.show()
 
 Cb = 0.37
 Mr = 2
 
-def f_step1(s):
-    if s < Cb:
+# hol = "RC001"
+# f = 4
+# get_prev_depth_from(df,hol, f)
+def get_RDD_value(R):
+    return R.collect()[0].__getitem__("depth_from")
+
+def get_prev_depth_from(df,hol, f):
+    try:
+        result = df.filter((df["depth_to"] == f) & (df["hole_id"] == hol)).select(["depth_from"]).collect()[0].__getitem__("depth_from")
+    except:
+        result = -1
+    return result
+udf_gpdf = udf(get_prev_depth_from)
+
+def get_next_depth_to(df, hol,t):
+    try:
+        result = df.filter((df["depth_from"] == t) & (df["hole_id"] == hol)).select(["depth_to"]).collect()[0].__getitem__("depth_to")
+    except:
+        result = -1
+    return result
+
+udf_gndt = udf(get_next_depth_to)
+
+def get_prev_result():
+    return
+
+def get_next_result():
+    return
+
+def calc_step1(res):
+    if res < Cb:
         result = 0  #'П'
     else:
         result = 1  #'Р?'
     return result
+udf_step1 = udf(calc_step1)
 
-#assigning UDF function
-udf1 = udf(f_step1)
+def calc_step2(s):
+    result = ''
+    return result
+udf_step2 = udf(calc_step2)
+
+
+#STEPS EXECUTING
 df1 = sorted_df \
-    .withColumn("step1", udf1(join_df["result"])) \
+    .withColumn("step1", udf_step1(join_df["result"]))
+
+#TEST
+# hol = "RC001"
+# f = 4
+# get_prev_depth_from(df1,hol, f)
+
+# def get_prev_depth_from(hol, f):
+#     try:
+#         result = df1.filter((df1["depth_to"] == f) & (df1["hole_id"] == hol)).select(["depth_from"]).collect()[0].__getitem__("depth_from")
+#     except:
+#         result = -1
+#     return result
+# udf_gpdf = udf(get_prev_depth_from)
+
+
+temp_df = df1 \
+    .withColumn("prev_depth_from", udf_gpdf(df1, df1["hole_id"],df1["depth_from"])) \
+    .withColumn("next_depth_to", udf_gndt(df1, df1["hole_id"],df1["depth_to"])) \
     .show()
 
 
-
-
-
-# Create step2 function
-def f_step2(s):
-
-    return result
-#assigning UDF function
-udf2 = udf(f_step2)
 
 # Create step3 function
 def f_step3(s):
