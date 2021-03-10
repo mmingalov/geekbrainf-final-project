@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession, DataFrame
 # from pyspark.sql import functions as F
-# from pyspark.sql.types import StructType, StringType
+from pyspark.sql.types import StructType, StringType, IntegerType
 # from pyspark.sql.functions import lit
 # import datetime
 
@@ -54,7 +54,7 @@ def get_prev_depth_from(df,hol, f):
     except:
         result = -1
     return result
-udf_gpdf = udf(get_prev_depth_from)
+udf_gpdf = udf(get_prev_depth_from, IntegerType())
 
 def get_next_depth_to(df, hol,t):
     try:
@@ -62,14 +62,15 @@ def get_next_depth_to(df, hol,t):
     except:
         result = -1
     return result
-
 udf_gndt = udf(get_next_depth_to)
 
 def get_prev_result():
     return
+udf_gpr = udf(get_prev_result())
 
 def get_next_result():
     return
+udf_gnr = udf(get_next_result)
 
 def calc_step1(res):
     if res < Cb:
@@ -90,17 +91,17 @@ df1 = sorted_df \
     .withColumn("step1", udf_step1(join_df["result"]))
 
 #TEST
-# hol = "RC001"
-# f = 4
-# get_prev_depth_from(df1,hol, f)
+hol = "RC001"
+f = 4
+get_prev_depth_from(df1,hol, f)
 
-# def get_prev_depth_from(hol, f):
-#     try:
-#         result = df1.filter((df1["depth_to"] == f) & (df1["hole_id"] == hol)).select(["depth_from"]).collect()[0].__getitem__("depth_from")
-#     except:
-#         result = -1
-#     return result
-# udf_gpdf = udf(get_prev_depth_from)
+def get_prev_depth_from(hol, f):
+    try:
+        result = df1.filter((df1["depth_to"] == f) & (df1["hole_id"] == hol)).select(["depth_from"]).collect()[0].__getitem__("depth_from")
+    except:
+        result = -1
+    return result
+udf_gpdf = udf(get_prev_depth_from, IntegerType())
 
 
 temp_df = df1 \
