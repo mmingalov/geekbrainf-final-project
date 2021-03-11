@@ -52,7 +52,7 @@ sql1 = "select *," \
         "else 0 " \
         "end as step1 " \
         "from sorted_view"
-# df1 = spark.sql(sql1)
+
 spark.sql(sql1).createOrReplaceTempView("df1")
 
 #step2
@@ -77,18 +77,46 @@ spark.sql(sql2).createOrReplaceTempView("df2")
 # step3
 sql3 = "select df2.*, " \
        "case when " \
-       "(df2.depth_from <> (select min(t2.depth_from) from df1 t2 where t2.hole_id = df2.hole_id)) " \
-       "and result < @Cb " \
-       "and (select t2.result from df2 t2 where t2.hole_id = df2.hole_id and t2.depth_from = df2.depth_to)>=@Cb " \
-       "and (select t2.result from df2 t2 where t2.hole_id = df2.hole_id and t2.depth_to = df2.depth_from)>=@Cb " \
+       "(df2.depth_from <> (select min(t2.depth_from) from df2 t2 where t2.hole_id = df2.hole_id)) " \
+       "and result < " + str(Cb) +  " " \
+       "and (select avg(t2.result) from df2 t2 where t2.hole_id = df2.hole_id and t2.depth_from = df2.depth_to)>=" + str(Cb) +  " " \
+       "and (select avg(t2.result) from df2 t2 where t2.hole_id = df2.hole_id and t2.depth_to = df2.depth_from)>=" + str(Cb) +  " " \
        "then 1 else step2 end step3 from df2 order by df2.hole_id, df2.depth_from"
 
 spark.sql(sql3).createOrReplaceTempView("df3")
 
+# step4
+sql4 = "select df3.*, " \
+       "case when " \
+       "(df3.depth_from <> (select min(t2.depth_from) from df3 t2 where t2.hole_id = df3.hole_id)) " \
+       "and ((df3.step1 = 1) or (df3.step3 = 1)) " \
+       "and ( ((select avg(t2.step3) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_to = df3.depth_from)<>0) " \
+       "or ((select avg(t2.step3) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_from = df3.depth_to)<>0) " \
+       "or ( ((select avg(t2.step1) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_to = df3.depth_from)<>0) " \
+       "and ((select avg(t2.step1) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_from = df3.depth_to)<>0) " \
+       "and ( (select avg(t2.depth_to) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_from = df3.depth_to)" \
+       "-(select avg(t2.depth_from) from df3 t2 where t2.hole_id = df3.hole_id and t2.depth_to = df3.depth_from) ) >= " + str(Mr) + ")) " \
+       "then 1 else 0 end composite from df3 order by df3.hole_id, df3.depth_from"
 
+spark.sql(sql4).createOrReplaceTempView("df4")
 
+df_composite = spark.sql("select * from df4 order by hole_id, depth_from")
 
+df_composite.show()
+# df_cached = df_composite.cache()
 
+#SAVING
+df_composite.select("hole_id", "depth_from", "depth_to", "sample_id", "result", "composite")\
+    .write\
+    .format("csv")\
+    .save("final_project/composite.csv")
+
+#checking a loading our CSV
+df = spark.read.format("csv")\
+            .option("header", "false")\
+            .schema("hole_id STRING, depth_from float, depth_to float, sample_id STRING, result float, composite integer")\
+            .load("final_project/composite.csv")\
+            .sort("hole_id","depth_from")
 
 #--------THERE IS PROTOTYPE OF COMPOSITING CALCULATION ------------
 # import pandas as pd
